@@ -238,6 +238,17 @@ of these were tested yet.
   Consequence: total attention mass is the wrong yardstick for retrieval; the few percent of mass that
   separates SnapKV from H2O is the needle. Step 5 will measure mass on needle tokens directly.
 
+- **S5 (2026-11-06, Step 4) Early layers tie; the policies separate only in middle and late layers.**
+  At 10% budget, in layers 1, 5 and 6, LRU, StreamingLLM, H2O and SnapKV all sit within 0.01–0.04 of each
+  other at 0.90–0.98 of oracle mass, on every task (summarization layer 6: 0.972–0.977). The spread is
+  largest in layers 14, 16, 19, 22 and 27 (needle layer 14: StreamingLLM 0.50, H2O 0.61, LRU 0.72,
+  SnapKV 0.94), which are the same layers that hold the needle heads (Step 5). Early-layer attention is
+  almost entirely sinks plus recent tokens, so any policy that keeps both is near-optimal there. Belady is
+  the outlier in the other direction: worst in layers 0–2 (0.43–0.65, where diffuse attention rarely
+  crosses τ) but the *best* policy in summarization layers 14 and 22 (0.80/0.85 vs H2O 0.77/0.78), where
+  attention is peaky. Implication: a per-layer budget (small for early layers, large for 14–27) should beat
+  a uniform one. Not tested here.
+
 ## Next steps
 - [x] Step 0 — setup and predictions
 - [x] Step 1 — record attention traces (6.5 GB)

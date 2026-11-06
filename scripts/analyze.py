@@ -138,6 +138,8 @@ def charts(o):
         lv = live_table()
         fig, axs = plt.subplots(1, 3, figsize=(13, 4.2))
         for ax, (task, name) in zip(axs, TASKS):
+            if not lv[task, "full"][1]:
+                ax.set_title(f"{name} (pending)", loc="left"); ax.axis("off"); continue
             for k in LIVE:
                 ax.plot(x, [lv[task, b, k][0] for b in BUDGETS], "o-", color=COL[k], lw=2, ms=6, label=LBL[k])
             ax.axhline(lv[task, "full"][0], color="#a3a29b", lw=1.5, ls="--", label="Full cache")
