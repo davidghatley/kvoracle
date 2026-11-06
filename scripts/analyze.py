@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import matplotlib
+import matplotlib.ticker
 import numpy as np
 
 matplotlib.use("Agg")
@@ -126,7 +127,7 @@ def charts(o):
             y = [o[task, b, k][0] for b in BUDGETS]
             ax.plot(x, y, "o-", color=COL[k], lw=2, ms=6, label=LBL[k], ls="--" if k == "ceiling" else "-")
         ax.axhline(1, color="#0b0b0b", lw=1)
-        ax.set_xscale("log"); ax.set_xticks(x); ax.set_xticklabels([f"{v:g}%" for v in x])
+        ax.set_xscale("log"); ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator()); ax.set_xticks(x); ax.set_xticklabels([f"{v:g}%" for v in x])
         ax.set_title(name, loc="left", color="#0b0b0b"); ax.set_xlabel("cache budget (% of prompt)", color="#52514e")
         style(ax)
     axs[0].set_ylabel("attention mass / weighted oracle", color="#52514e")
@@ -143,7 +144,7 @@ def charts(o):
             for k in LIVE:
                 ax.plot(x, [lv[task, b, k][0] for b in BUDGETS], "o-", color=COL[k], lw=2, ms=6, label=LBL[k])
             ax.axhline(lv[task, "full"][0], color="#a3a29b", lw=1.5, ls="--", label="Full cache")
-            ax.set_xscale("log"); ax.set_xticks(x); ax.set_xticklabels([f"{v:g}%" for v in x])
+            ax.set_xscale("log"); ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator()); ax.set_xticks(x); ax.set_xticklabels([f"{v:g}%" for v in x])
             ax.set_title(name, loc="left"); ax.set_xlabel("cache budget (% of prompt)", color="#52514e"); style(ax)
         axs[0].set_ylabel("task score", color="#52514e")
         axs[0].legend(frameon=False, fontsize=8)

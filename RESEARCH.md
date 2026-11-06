@@ -158,6 +158,147 @@ Offline mass / oracle at 10% (full tables in Step 4):
 | summarization | 0.464 | 0.854 | 0.821 | **0.891** | 0.871 |
 | multi-doc QA | 0.186 | 0.889 | 0.842 | 0.885 | **0.924** |
 
+### Step 4 — measurement and verdicts (2026-11-06)
+Scripts: `scripts/run_sim.py` (offline), `scripts/run_live.py` via `scripts/live_queue.sh` (live: 30 prompts ×
+4 budgets × 6 policies = 720 generations + 30 full-cache), `scripts/analyze.py` (tables → `docs/results.md`,
+charts → `docs/figs/`). Live scores: needle = exact match of the 7-digit number; summarization = ROUGE-L
+against the gov_report reference; QA = LongBench token F1. "Oracle replay" = the weighted oracle's offline
+eviction log, replayed live.
+
+![Retained mass vs budget](docs/figs/mass_vs_budget.png)
+![Live score vs budget](docs/figs/live_vs_budget.png)
+![Per-layer mass at 10%](docs/figs/per_layer_10pct.png)
+
+#### (a) Attention mass retained, as a fraction of the weighted oracle (offline sim, mean ± sd over 10 prompts)
+
+**Needle**
+
+| policy | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Random | 0.178 ± 0.016 | 0.220 ± 0.022 | 0.355 ± 0.021 | 0.560 ± 0.024 |
+| LRU | 0.884 ± 0.008 | 0.875 ± 0.012 | 0.885 ± 0.028 | 0.927 ± 0.027 |
+| StreamingLLM | 0.775 ± 0.012 | 0.772 ± 0.013 | 0.800 ± 0.052 | 0.879 ± 0.057 |
+| H2O | 0.828 ± 0.009 | 0.835 ± 0.007 | 0.870 ± 0.029 | 0.916 ± 0.028 |
+| SnapKV | 0.943 ± 0.005 | 0.945 ± 0.005 | 0.959 ± 0.005 | 0.979 ± 0.003 |
+| Belady (τ=0.01) | 0.841 ± 0.006 | 0.824 ± 0.006 | 0.836 ± 0.005 | 0.904 ± 0.007 |
+| Weighted oracle | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 |
+| Per-step ceiling | 1.006 ± 0.000 | 1.005 ± 0.000 | 1.003 ± 0.000 | 1.001 ± 0.000 |
+| *oracle mass / full-cache mass* | 0.906 | 0.934 | 0.969 | 0.990 |
+
+**Summarization**
+
+| policy | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Random | 0.430 ± 0.016 | 0.464 ± 0.018 | 0.547 ± 0.023 | 0.685 ± 0.025 |
+| LRU | 0.877 ± 0.012 | 0.854 ± 0.019 | 0.848 ± 0.023 | 0.890 ± 0.015 |
+| StreamingLLM | 0.852 ± 0.014 | 0.821 ± 0.016 | 0.813 ± 0.018 | 0.846 ± 0.020 |
+| H2O | 0.898 ± 0.009 | 0.891 ± 0.008 | 0.906 ± 0.012 | 0.945 ± 0.007 |
+| SnapKV | 0.886 ± 0.008 | 0.871 ± 0.009 | 0.885 ± 0.013 | 0.931 ± 0.011 |
+| Belady (τ=0.01) | 0.827 ± 0.011 | 0.794 ± 0.013 | 0.767 ± 0.011 | 0.822 ± 0.014 |
+| Weighted oracle | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 |
+| Per-step ceiling | 1.090 ± 0.011 | 1.070 ± 0.010 | 1.037 ± 0.006 | 1.014 ± 0.002 |
+| *oracle mass / full-cache mass* | 0.805 | 0.859 | 0.931 | 0.976 |
+
+**Multi-doc QA**
+
+| policy | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Random | 0.137 ± 0.056 | 0.186 ± 0.053 | 0.332 ± 0.038 | 0.555 ± 0.037 |
+| LRU | 0.892 ± 0.026 | 0.889 ± 0.026 | 0.904 ± 0.028 | 0.931 ± 0.030 |
+| StreamingLLM | 0.839 ± 0.039 | 0.842 ± 0.040 | 0.867 ± 0.044 | 0.903 ± 0.046 |
+| H2O | 0.874 ± 0.028 | 0.885 ± 0.029 | 0.922 ± 0.019 | 0.959 ± 0.014 |
+| SnapKV | 0.911 ± 0.028 | 0.924 ± 0.022 | 0.954 ± 0.012 | 0.981 ± 0.005 |
+| Belady (τ=0.01) | 0.788 ± 0.030 | 0.774 ± 0.030 | 0.796 ± 0.025 | 0.873 ± 0.026 |
+| Weighted oracle | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 |
+| Per-step ceiling | 1.013 ± 0.007 | 1.010 ± 0.005 | 1.005 ± 0.003 | 1.002 ± 0.001 |
+| *oracle mass / full-cache mass* | 0.895 | 0.929 | 0.969 | 0.990 |
+
+#### (b) Live task score (needle: exact-match rate; summarization: ROUGE-L; QA: token F1)
+
+Cell = score (ROUGE-L agreement with the full-cache output in parentheses).
+
+**Needle** (full cache: 1.000, n=10)
+
+| policy | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Random | 0.000 (0.00) | 0.000 (0.00) | 0.000 (0.00) | 0.200 (0.20) |
+| LRU | 0.000 (0.00) | 0.000 (0.00) | 0.300 (0.30) | 0.400 (0.40) |
+| StreamingLLM | 0.000 (0.00) | 0.000 (0.00) | 0.200 (0.20) | 0.600 (0.60) |
+| H2O | 0.000 (0.00) | 0.000 (0.00) | 0.100 (0.10) | 0.200 (0.20) |
+| SnapKV | 1.000 (1.00) | 1.000 (1.00) | 1.000 (1.00) | 1.000 (1.00) |
+| Oracle replay | 1.000 (1.00) | 1.000 (1.00) | 1.000 (1.00) | 1.000 (1.00) |
+
+**Summarization** (full cache: 0.182, n=10)
+
+| policy | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Random | 0.101 (0.13) | 0.105 (0.13) | 0.174 (0.27) | 0.188 (0.35) |
+| LRU | 0.167 (0.28) | 0.167 (0.29) | 0.178 (0.34) | 0.188 (0.43) |
+| StreamingLLM | 0.155 (0.23) | 0.165 (0.25) | 0.178 (0.28) | 0.200 (0.32) |
+| H2O | 0.174 (0.31) | 0.179 (0.36) | 0.186 (0.43) | 0.185 (0.46) |
+| SnapKV | 0.159 (0.28) | 0.167 (0.33) | 0.177 (0.40) | 0.180 (0.54) |
+| Oracle replay | 0.182 (0.50) | 0.174 (0.50) | 0.184 (0.54) | 0.187 (0.71) |
+
+**Multi-doc QA** (full cache: 0.561, n=10)
+
+| policy | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Random | 0.000 (0.01) | 0.013 (0.05) | 0.098 (0.33) | 0.342 (0.65) |
+| LRU | 0.409 (0.71) | 0.437 (0.84) | 0.537 (0.93) | 0.587 (0.94) |
+| StreamingLLM | 0.287 (0.57) | 0.387 (0.76) | 0.387 (0.77) | 0.430 (0.81) |
+| H2O | 0.554 (0.83) | 0.583 (0.86) | 0.587 (0.94) | 0.583 (0.95) |
+| SnapKV | 0.509 (0.90) | 0.537 (0.93) | 0.587 (0.94) | 0.583 (0.95) |
+| Oracle replay | 0.537 (0.93) | 0.577 (0.97) | 0.561 (1.00) | 0.561 (1.00) |
+
+#### Oracle variants: Belady vs weighted greedy
+
+| task | budget | Belady τ=0.001 | τ=0.003 | τ=0.01 | τ=0.03 | keep-set Jaccard (τ=0.01) |
+|---|---|---|---|---|---|---|
+| Needle | 5% | 0.929 | 0.892 | 0.841 | 0.753 | 0.033 |
+| Needle | 10% | 0.909 | 0.873 | 0.824 | 0.741 | 0.046 |
+| Needle | 25% | 0.904 | 0.876 | 0.836 | 0.769 | 0.142 |
+| Needle | 50% | 0.935 | 0.922 | 0.904 | 0.872 | 0.358 |
+| Summarization | 5% | 0.939 | 0.912 | 0.827 | 0.675 | 0.161 |
+| Summarization | 10% | 0.937 | 0.899 | 0.794 | 0.648 | 0.129 |
+| Summarization | 25% | 0.937 | 0.872 | 0.767 | 0.635 | 0.151 |
+| Summarization | 50% | 0.948 | 0.904 | 0.822 | 0.711 | 0.386 |
+| Multi-doc QA | 5% | 0.914 | 0.860 | 0.788 | 0.683 | 0.034 |
+| Multi-doc QA | 10% | 0.889 | 0.840 | 0.774 | 0.676 | 0.052 |
+| Multi-doc QA | 25% | 0.886 | 0.847 | 0.796 | 0.719 | 0.148 |
+| Multi-doc QA | 50% | 0.921 | 0.900 | 0.873 | 0.833 | 0.355 |
+
+#### Prediction check numbers: best of StreamingLLM / H2O / SnapKV, mass / weighted oracle
+
+| task | 5% | 10% | 25% | 50% |
+|---|---|---|---|---|
+| Needle | 0.943 (SnapKV) | 0.945 (SnapKV) | 0.959 (SnapKV) | 0.979 (SnapKV) |
+| Summarization | 0.898 (H2O) | 0.891 (H2O) | 0.906 (H2O) | 0.945 (H2O) |
+| Multi-doc QA | 0.911 (SnapKV) | 0.924 (SnapKV) | 0.954 (SnapKV) | 0.981 (SnapKV) |
+
+
+**Verdicts** (operationalization as pre-registered: best of StreamingLLM / H2O / SnapKV, mass relative to the
+weighted oracle, 10% budget as headline):
+
+| prediction | offline mass | live accuracy | verdict |
+|---|---|---|---|
+| **P1** heuristics > 90% of oracle on summarization | best = H2O 0.891 ± 0.008 at 10% (8 of 10 prompts below 0.90); 0.898 at 5%, 0.906 at 25%, 0.945 at 50% | every non-random policy within 0.03 ROUGE-L of full cache (0.182) at every budget; H2O 0.179 at 10% vs oracle replay 0.174 | **Refuted, narrowly**, on the pre-registered metric (0.891 < 0.90; holds at ≥ 25%). Live, heuristics match the oracle, but ROUGE-L barely moves at all (S6), so live does not discriminate. |
+| **P2** heuristics < 60% of oracle on needle | best = SnapKV 0.945 at 10% (0.943–0.979 at all budgets) | SnapKV 1.0 = oracle replay 1.0 at every budget | **Refuted.** The *best* heuristic matches the oracle. The intuition behind P2 was right for the other three: LRU, StreamingLLM, H2O score 0/10 at 5–10% while keeping 0.77–0.88 of the mass. The gap is all-or-nothing per policy, not a shortfall in the best one. |
+| **P3** gap widens as budget shrinks | yes on needle (gap 0.021 → 0.057 from 50% to 5%) and QA (0.019 → 0.089); summarization mostly (0.055 → 0.102, but not monotone: 0.094 / 0.109 / 0.102 at 25 / 10 / 5%) | no: best heuristic stays at oracle level on needle (gap 0) and QA (H2O 0.554 vs replay 0.537 at 5%), and within 0.01 on summarization | **Confirmed on mass, not supported live.** For the weaker heuristics the live gap does widen sharply (needle StreamingLLM 0.6 → 0; QA 0.43 → 0.29). |
+
+Other observations:
+- **Mass does not predict accuracy across policies** (S4). The better predictor for retrieval is mass on the
+  answer tokens in retrieval heads (Step 5): SnapKV 0.98, LRU 0.60, H2O 0.17, StreamingLLM 0.00 of the needle's
+  full-cache attention, which orders the live needle scores at 50% only partly (StreamingLLM beats H2O there
+  because the needle falls inside its recent window at depth ≥ 0.5).
+- **Oracle replay is not an upper bound on live score.** It maximizes attention mass, not the task metric:
+  on QA, H2O beats it at 5% (0.554 vs 0.537), and on summarization StreamingLLM at 50% (0.200 vs 0.187).
+  With n = 10 these differences are within noise.
+- **Divergence from full-cache output on long generations.** Summarization agreement with the full-cache
+  text (ROUGE-L between the two outputs) is only 0.50 for oracle replay at 5% and 0.71 at 50%: with 255
+  greedy steps, any small perturbation sends the generation down another path. Short answers (needle, QA)
+  reach agreement 0.93–1.00 under the oracle.
+- **Per layer** (S5): layers 1, 5, 6 tie; policies separate in layers 14–27.
+
 ### Step 5 — reading the failures (needle, 2026-11-06)
 Script: `scripts/failures.py` (+ digit check). Choice of combination: on live accuracy LRU, StreamingLLM and
 H2O tie at 0/10 on needle at 5% and 10%. By the rule "lowest offline mass among the tied", the worst is
@@ -249,12 +390,45 @@ of these were tested yet.
   attention is peaky. Implication: a per-layer budget (small for early layers, large for 14–27) should beat
   a uniform one. Not tested here.
 
+- **S6 (2026-11-06, Step 4) Summarization ROUGE-L can't separate the policies; random at 50% beats the full cache.**
+  Live ROUGE-L for every non-random policy is 0.155–0.200 at every budget, against 0.182 for the full cache.
+  Random eviction at 50% scores 0.188, *above* the full cache, despite keeping only 0.69 of oracle mass and
+  agreeing with the full-cache text at only 0.35. ROUGE-L against a long human reference rewards
+  topical words, and a fluent summary of the same report gets about the same score whatever it says
+  exactly. Summarization accuracy here is therefore nearly uninformative. A faithfulness metric (QA over
+  the summary, or an LLM judge against the source) would be needed, and was not pre-registered, so it is not
+  substituted post hoc.
+
 ## Next steps
 - [x] Step 0 — setup and predictions
 - [x] Step 1 — record attention traces (6.5 GB)
 - [x] Step 2 — build the oracle (Belady + weighted; greedy ≈ LP optimum)
 - [x] Step 3 — online baselines
-- [ ] Step 4 — measure (offline mass + live accuracy), judge P1–P3
+- [x] Step 4 — measure (offline mass + live accuracy), judge P1–P3 (P1 refuted narrowly, P2 refuted, P3 mass-only)
 - [x] Step 5 — read failures, mechanism hypothesis (needle)
 
+Follow-ups (not started, in priority order):
+- [ ] Test the Step 5 hypothesis: needle prompts with the question placed *before* the haystack (predict SnapKV
+      breaks), and with the question repeated at the end before compression (predict H2O/LRU recover).
+- [ ] Answer-token oracle: an oracle that maximizes mass on answer-bearing tokens in retrieval heads, and check
+      whether that metric predicts live accuracy across policies where total mass does not.
+- [ ] Per-layer budgets (S5): small budgets for layers 0–10, large for 14–27, at the same total; compare live.
+- [ ] Belady with weighted hits / re-fetch (S2): a variant that breaks ties by future mass, to see whether the
+      gap to the weighted oracle is just tie-breaking.
+- [ ] Replace summarization ROUGE-L with a faithfulness metric (S6), pre-registered before rerunning.
+- [ ] More prompts (n = 10 per task is small; QA differences < 0.05 F1 are noise) and a second model
+      (Llama-3.1-8B is gated; Mistral-7B or another ungated GQA model) to check the needle-head layers generalize.
+- [ ] Longer exact-optimum windows (> 32 steps) on summarization to confirm greedy ≈ optimal over 255 steps.
+
 ## Open questions
+- Is attention mass the right objective for an oracle at all? For retrieval it is not (S4): a policy can keep
+  0.88 of the oracle's mass and fail every time. What objective makes "oracle" mean "best achievable accuracy"?
+- Can an online policy find cold answer tokens *before* the question arrives? SnapKV only works because the
+  question sits at the end of the prompt. With the question first, or with multi-turn chat where the next
+  question is unknown, every policy here may fail.
+- Why is weighted greedy essentially optimal (greedy/LP ≥ 0.9994, LP always integral)? Is there a structural
+  reason (e.g. future mass is near-monotone in time per token) that would make it provably optimal here?
+- Does the 7-heads-per-KV-group averaging (GQA) hide per-query-head needs? A KV head is evicted for 7 query
+  heads at once; one retrieval query head in a group may be outvoted by six that do not care.
+- How much of the summarization result is the metric (S6) versus genuine robustness of long generation
+  to eviction?
