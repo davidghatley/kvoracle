@@ -58,7 +58,7 @@ class Engine:
         for a in range(0, s, self.qc):
             b = min(s, a + self.qc)
             e = s0 + b  # keys visible to the last query of this sub-chunk
-            sc = torch.matmul(qg[:, :, a:b], Kp[:, :e].transpose(-1, -2).unsqueeze(1)).float() * self.scaling
+            sc = torch.matmul(qg[:, :, a:b].float() * self.scaling, Kp[:, :e].float().transpose(-1, -2).unsqueeze(1))
             qpos = torch.arange(s0 + a, s0 + b, device=q.device)
             sc.masked_fill_(torch.arange(e, device=q.device)[None, :] > qpos[:, None], float("-inf"))
             w = sc.softmax(-1)
@@ -77,7 +77,7 @@ class Engine:
 
     def _decode_scores(self, q, Ks):
         qg = q[0, :, 0].view(self.nkv, self.g, self.hd)
-        return torch.matmul(qg, Ks.transpose(-1, -2)).float() * self.scaling  # [nkv, g, n]
+        return torch.matmul(qg.float() * self.scaling, Ks.float().transpose(-1, -2))  # [nkv, g, n]; fp32: Qwen2 overflows fp16 QK^T
 
     def _trace_attn(self, li, q, k, v):
         t, L = self.t, self.L
@@ -103,7 +103,7 @@ class Engine:
         pol = c["pol"]
         pol.on_insert(f, self.cur)
         w = self._decode_scores(q, c["K"]).softmax(-1)
-        o = torch.matmul(w.half(), c["V"].unsqueeze(1))
+        o = torch.matmul(w.half(), c["V"])
         wm = w.mean(1)
         pol.observe(self.t, wm, c["pos"], self.cur)
         c["free"] = pol.evict(self.t, c["pos"], self.cur)

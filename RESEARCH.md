@@ -72,7 +72,11 @@ weighted oracle), averaged over prompts, layers and KV heads.
 _None yet._
 
 ## Surprises
-_None yet._
+- **S1 (2026-11-06, before Step 1) fp16 eager attention breaks Qwen2.5-7B.** The first engine check with QKᵀ in
+  fp16 (as HF eager does) produced garbage ("!!!" tokens, 0/40 agreement with stock SDPA generation). Layer-0
+  keys reach |k| ≈ 172, so fp16 logits overflow. Fix: scores computed in fp32 (q·scale and K cast to fp32);
+  after the fix per-layer outputs match SDPA within 2e-3. Implication: attention traces from "eager fp16"
+  setups on Qwen2 models can be silently corrupt; ours are fp32-softmax, stored as fp16 probabilities.
 
 ## Next steps
 - [x] Step 0 — setup and predictions

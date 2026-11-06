@@ -49,6 +49,7 @@ for pid in ids:
     for f in BUDGETS:
         for k in ["full", "ceiling", "random", "lru", "streaming", "h2o", "snapkv", "oracle_w"] + [f"belady@{x}" for x in BELADY_TAUS]:
             res[str(f)][k] = [0.0] * H
+        res[str(f)]["jaccard_belady_w"] = [0.0] * H
     logs = {str(f): dict(keep=torch.zeros(H, res[str(f)]["B"], dtype=torch.long), evicted=torch.zeros(T, H, dtype=torch.long)) for f in BUDGETS}
     for g0 in range(0, H, GROUP):
         hs = slice(g0, g0 + GROUP)
@@ -67,7 +68,12 @@ for pid in ids:
             r["oracle_w"][hs] = w["mass"].tolist()
             logs[str(f)]["keep"][hs], logs[str(f)]["evicted"][:, hs] = w["keep"], w["evicted"]
             for x in BELADY_TAUS:
-                r[f"belady@{x}"][hs] = sim.simulate(A, stats, L, B, P.Belady, future=futs[x], seed=1)["mass"].tolist()
+                bel = sim.simulate(A, stats, L, B, P.Belady, future=futs[x], seed=1)
+                r[f"belady@{x}"][hs] = bel["mass"].tolist()
+                if x == P.TAU:  # overlap of the two oracles' prefill keep sets
+                    kb = torch.zeros(len(range(H)[hs]), L, dtype=torch.bool).scatter_(1, bel["keep"], True)
+                    kw = torch.zeros_like(kb).scatter_(1, w["keep"], True)
+                    r["jaccard_belady_w"][hs] = ((kb & kw).sum(1) / (kb | kw).sum(1)).tolist()
         del A, futs, fut
     for f in BUDGETS:
         torch.save(logs[str(f)], ROOT / "data/sim" / f"{pid}_{f}_oracle_w.pt")
