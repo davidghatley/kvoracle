@@ -111,6 +111,23 @@ Stored per prompt in `data/traces/<id>/` (on /mnt/work, not in git).
   everything else. A policy that keeps sinks + recent already gets ~60% of the mass, so mass ratios on
   needle are high for every structured heuristic; whether that predicts retrieval is what live accuracy
   (Step 4b) and the needle-token analysis (Step 5) must answer.
+- **S4 (2026-11-06, Step 4b needle live) Mass does not predict retrieval.** Live needle exact-match (10 prompts):
+
+  | budget | random | LRU | StreamingLLM | H2O | SnapKV | oracle replay |
+  |---|---|---|---|---|---|---|
+  | 5% | 0.0 | 0.0 | 0.0 | 0.0 | **1.0** | **1.0** |
+  | 10% | 0.0 | 0.0 | 0.0 | 0.0 | **1.0** | **1.0** |
+  | 25% | 0.0 | 0.3 | 0.2 | 0.1 | **1.0** | **1.0** |
+  | 50% | 0.2 | 0.4 | 0.6 | 0.2 | **1.0** | **1.0** |
+
+  LRU and H2O keep 0.84–0.88 of oracle mass at 10% yet score 0/10; SnapKV at 0.95 scores 10/10. Failures
+  are mechanistic: the first digit is always right (it comes from prefill, D7), later digits drift or the
+  answer stops early ('803' for 8056020). At 50%, StreamingLLM succeeds exactly on the needles at depth
+  ≥ 0.5 (inside its recent window) and H2O exactly on depth ≥ 0.8 (inside its 25% recent half), so H2O's
+  heavy-hitter half never captured the needle. Accumulated prefill attention favors early/sink tokens, not
+  the needle. SnapKV works because its observation window is the question, which points at the needle.
+  Consequence: total attention mass is the wrong yardstick for retrieval; the few percent of mass that
+  separates SnapKV from H2O is the needle. Step 5 will measure mass on needle tokens directly.
 
 ## Next steps
 - [x] Step 0 — setup and predictions
