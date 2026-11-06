@@ -63,13 +63,34 @@ weighted oracle), averaged over prompts, layers and KV heads.
   reach it). (iv) LP relaxation of the exact weighted problem on a 32-step window for a sample of heads, an
   upper bound on the exact optimum, to measure how far the greedy oracle is from optimal. Headline ratio =
   policy / weighted greedy. Live "oracle_replay" replays the weighted greedy's offline decisions.
+- **D7 (2026-11-06) The first generated token is always full-cache.** Under prefill-then-compress, the
+  first output token comes from the prefill pass. Qwen tokenizes digits singly, so for the needle the first
+  of 7 digits is free and eviction acts on the remaining 6 digits + EOS (T = 7 decode steps). This favors
+  every policy equally on accuracy; the offline metric only covers the T decode steps.
 - **Note on Belady (required by brief):** Belady's MIN is optimal for unit-cost hits with re-fetch on a miss.
   Neither holds here: hits are weighted by attention, and **an evicted KV entry can never be re-fetched**
   (eviction is permanent), so "furthest next use" can throw away a token needed later in favor of one needed
   soon but rarely. The τ-thresholded Belady is therefore an approximation of the optimum, not the optimum.
 
 ## Results
-_None yet._
+
+### Step 1 — traces (2026-11-06)
+Command: `PYTHONPATH=. gpu_run --free .venv/bin/python scripts/record_traces.py --task <needle|summ|mdqa>`.
+Stored per prompt in `data/traces/<id>/` (on /mnt/work, not in git).
+
+| task | prompts | prompt tokens | decode steps T | group-mean trace (fp16) | per-query-head top-32 | full-cache score |
+|---|---|---|---|---|---|---|
+| needle | 10 | 9,418–14,470 | 7 each | 172 MB | 10 MB | 1.000 (exact match) |
+| summarization (gov_report) | 10 | 8,165–15,864 | 255 each (all hit the cap) | 6,289 MB | 366 MB | 0.182 ROUGE-L |
+| multi-doc QA (hotpotqa) | 10 | 9,275–15,750 | 2–6, one 31 | 194 MB | 10 MB | 0.561 F1 |
+| **total** | 30 | | | **6.5 GB** | **0.39 GB** | |
+
+- Format: `trace.npy` fp16 [T, 28 layers, 4 KV heads, L+T], full (not top-k), so the offline sim is exact.
+  Storing every *query* head in fp16 would be 7× larger (~45 GB): feasible on disk but unnecessary, so
+  per-query-head detail is kept as top-32 only. Prefill stats (`stats.npz`) are ~10 MB per prompt.
+- Cost: prefill 9–27 s per prompt (fp32 scores, chunked), decode ~0.04 s/step on the 3060, peak 7.6 GB VRAM.
+- Traces are small enough (no "too large" surprise). Summarization dominates (96% of bytes) because T = 255.
+- Horizon caveat: needle and QA have 2–7 decode steps, so the oracle sees a very short future there.
 
 ## Surprises
 - **S1 (2026-11-06, before Step 1) fp16 eager attention breaks Qwen2.5-7B.** The first engine check with QKᵀ in
@@ -77,10 +98,23 @@ _None yet._
   keys reach |k| ≈ 172, so fp16 logits overflow. Fix: scores computed in fp32 (q·scale and K cast to fp32);
   after the fix per-layer outputs match SDPA within 2e-3. Implication: attention traces from "eager fp16"
   setups on Qwen2 models can be silently corrupt; ours are fp32-softmax, stored as fp16 probabilities.
+- **S2 (2026-11-06, Step 2 on needle traces) The Belady oracle loses to online heuristics.** At 10% budget on
+  needle, Belady(τ=0.01) keeps 0.82 of the weighted oracle's mass; online SnapKV keeps 0.94, LRU 0.87,
+  H2O 0.84. Mechanism (checked on needle-00/05): per head only a median of **14–15 prompt tokens ever exceed
+  τ** in the 7 decode steps, while B ≈ 1,150–1,450. Belady keeps those and fills the other ~99% of slots by
+  tie-break (random among "never used"), discarding the sub-threshold bulk that carries 27–31% of the mass
+  (median share of mass above τ: 0.69–0.73). Belady with a binary "use" is the wrong oracle when value is
+  diffuse; this is the unit-cost assumption failing, plus no re-fetch. The τ sweep (0.001–0.03) tests
+  whether a lower threshold rescues it.
+- **S3 (2026-11-06) Needle "attention mass" is dominated by easy mass.** Median per head: 32–34% of
+  past-token mass on the 4 sink tokens, 29% on the last 64 prompt tokens (the question), ~33–36% on
+  everything else. A policy that keeps sinks + recent already gets ~60% of the mass, so mass ratios on
+  needle are high for every structured heuristic; whether that predicts retrieval is what live accuracy
+  (Step 4b) and the needle-token analysis (Step 5) must answer.
 
 ## Next steps
 - [x] Step 0 — setup and predictions
-- [ ] Step 1 — record attention traces
+- [x] Step 1 — record attention traces (6.5 GB)
 - [ ] Step 2 — build the oracle (Belady + weighted)
 - [ ] Step 3 — online baselines
 - [ ] Step 4 — measure (offline mass + live accuracy), judge P1–P3
