@@ -92,6 +92,72 @@ Stored per prompt in `data/traces/<id>/` (on /mnt/work, not in git).
 - Traces are small enough (no "too large" surprise). Summarization dominates (96% of bytes) because T = 255.
 - Horizon caveat: needle and QA have 2–7 decode steps, so the oracle sees a very short future there.
 
+### Step 2 — the oracles (2026-11-06)
+Scripts: `scripts/run_sim.py` (all 30 prompts × 4 budgets), `scripts/exact_check.py` (LP bound).
+All numbers are retained attention mass summed over heads and decode steps, as a fraction of the weighted
+oracle, averaged over the 10 prompts of a task.
+
+**Is weighted greedy actually optimal?** For each of 6 prompts (2 per task) × 6 KV heads × budgets 5% and 25%,
+I solved the LP relaxation of the exact problem (choose which tokens to hold at every step, at most B held,
+no re-admission after eviction) over the first Tw = min(T, 32) decode steps with HiGHS, and compared it with
+greedy on the same window.
+
+| task | cases | greedy / LP (mean) | worst | LP solutions fractional |
+|---|---|---|---|---|
+| needle | 24 | 0.99999 | 0.99992 | 0 of 24 |
+| summarization | 24 | 0.99988 | 0.99935 | 0 of 24 |
+| multi-doc QA | 24 | 1.00000 | 0.99998 | 0 of 24 |
+
+The LP was integral every time, so its value is the exact optimum. Greedy is within 0.07% of it in the worst case.
+So for this objective "weighted oracle" ≈ "optimal", at least on 32-step windows. Why: each token's future
+mass changes little over the window, and eviction is one token per step, so evicting the token with the least
+remaining mass is nearly always right. (The sim's per-step top-B *ceiling* is above 1.0 because it may
+re-admit evicted tokens; it is not achievable under permanent eviction.)
+
+**Belady vs weighted.** Belady (evict the token whose next use with attention > τ is furthest away) diverges
+from the weighted oracle in both mass and membership:
+
+| task | budget | Belady τ=0.001 | τ=0.003 | τ=0.01 (pre-registered) | τ=0.03 | keep-set Jaccard vs weighted (τ=0.01) |
+|---|---|---|---|---|---|---|
+| needle | 5% | 0.929 | 0.892 | 0.841 | 0.753 | 0.033 |
+| needle | 10% | 0.909 | 0.873 | 0.824 | 0.741 | 0.046 |
+| needle | 25% | 0.904 | 0.876 | 0.836 | 0.769 | 0.142 |
+| needle | 50% | 0.935 | 0.922 | 0.904 | 0.872 | 0.358 |
+| summarization | 5% | 0.939 | 0.912 | 0.827 | 0.675 | 0.161 |
+| summarization | 10% | 0.937 | 0.899 | 0.794 | 0.648 | 0.129 |
+| summarization | 25% | 0.937 | 0.872 | 0.767 | 0.635 | 0.151 |
+| summarization | 50% | 0.948 | 0.904 | 0.822 | 0.711 | 0.386 |
+| multi-doc QA | 5% | 0.914 | 0.860 | 0.788 | 0.683 | 0.034 |
+| multi-doc QA | 10% | 0.889 | 0.840 | 0.774 | 0.676 | 0.052 |
+| multi-doc QA | 25% | 0.886 | 0.847 | 0.796 | 0.719 | 0.148 |
+| multi-doc QA | 50% | 0.921 | 0.900 | 0.873 | 0.833 | 0.355 |
+
+- Belady recovers 64–95% of the weighted oracle's mass, depending on τ, and is monotonically worse as τ grows.
+  Even at τ = 0.001 it does not close the gap.
+- The two oracles keep almost disjoint sets: Jaccard 0.03–0.16 at ≤ 25% budget. Most held tokens never cross
+  τ, so Belady is choosing among ties. That is surprise S2: unit-cost Belady is the wrong oracle when
+  hits are weighted, and it loses to SnapKV and H2O.
+- The full cache's mass is the absolute upper limit. The weighted oracle gets 0.81–0.99 of it (lowest:
+  summarization at 5%, where 255 decode steps spread attention widely).
+- From here on, "oracle" means the weighted greedy oracle. Belady@0.01 is reported alongside it for reference.
+
+### Step 3 — online baselines (2026-11-06)
+Implemented in `kvo/policies.py` and shared between the offline sim and the live engine (one class per
+policy, same interface). Definitions are in D5. None of them sees the future. Each prompt is simulated at
+5/10/25/50% budgets with a seed fixed by `zlib.crc32(id)`. Nothing was tuned: hyperparameters are the papers'
+defaults (StreamingLLM 4 sinks + recent window; H2O half heavy-hitter / half recent; SnapKV window 32,
+pool kernel 7), plus τ = 0.01 for LRU's "use", all fixed before any eval run. The dev prompts (`tasks_dev.jsonl`)
+were used only for engine and plumbing checks. Live versions run in `scripts/run_live.py`, alongside an
+`oracle_replay` policy that replays the weighted oracle's offline eviction log.
+
+Offline mass / oracle at 10% (full tables in Step 4):
+
+| task | random | LRU | StreamingLLM | H2O | SnapKV |
+|---|---|---|---|---|---|
+| needle | 0.220 | 0.875 | 0.772 | 0.835 | **0.945** |
+| summarization | 0.464 | 0.854 | 0.821 | **0.891** | 0.871 |
+| multi-doc QA | 0.186 | 0.889 | 0.842 | 0.885 | **0.924** |
+
 ### Step 5 — reading the failures (needle, 2026-11-06)
 Script: `scripts/failures.py` (+ digit check). Choice of combination: on live accuracy LRU, StreamingLLM and
 H2O tie at 0/10 on needle at 5% and 10%. By the rule "lowest offline mass among the tied", the worst is
@@ -175,8 +241,8 @@ of these were tested yet.
 ## Next steps
 - [x] Step 0 — setup and predictions
 - [x] Step 1 — record attention traces (6.5 GB)
-- [ ] Step 2 — build the oracle (Belady + weighted)
-- [ ] Step 3 — online baselines
+- [x] Step 2 — build the oracle (Belady + weighted; greedy ≈ LP optimum)
+- [x] Step 3 — online baselines
 - [ ] Step 4 — measure (offline mass + live accuracy), judge P1–P3
 - [x] Step 5 — read failures, mechanism hypothesis (needle)
 

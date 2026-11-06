@@ -21,7 +21,7 @@ LBL = {"belady@0.01": "Belady (τ=0.01)", "oracle_w": "Weighted oracle", "oracle
        "ceiling": "Per-step ceiling", "streaming": "StreamingLLM", "h2o": "H2O", "snapkv": "SnapKV",
        "lru": "LRU", "random": "Random", "full": "Full cache"}
 
-sims = {p.stem: json.load(open(p)) for p in (ROOT / "data/sim").glob("*.json") if p.stem != "exact_check"}
+sims = {p.stem: json.load(open(p)) for p in (ROOT / "data/sim").glob("*.json") if p.stem not in ("exact_check", "failures")}
 lives = {p.stem: json.load(open(p)) for p in (ROOT / "data/live").glob("*.json")} if (ROOT / "data/live").exists() else {}
 
 
