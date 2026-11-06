@@ -158,16 +158,16 @@ page = f'''<title>KV Cache Oracle Gap</title>
 </style>
 <div class="ss-body">
 <div class="ss-page stack">
-  <header class="ss-runhead"><span><b>Research log</b> · kvoracle · Qwen2.5-7B-Instruct</span><span>2026-11-06 · in progress</span></header>
+  <header class="ss-runhead"><span><b>Research log</b> · kvoracle · Qwen2.5-7B-Instruct</span><span>2026-11-06 · steps 0–5 complete</span></header>
 
   <h1 class="ss-mast ss-mast--m"><span class="ss-mast__x">KV Cache</span><span class="ss-mast__c">Oracle Gap</span></h1>
 
   <div class="summary">
     <div class="ss-prose">
-      <p><strong>Short answer so far: by the attention they keep, the best simple eviction rules get about 89–95% of what a perfect-hindsight oracle keeps, at a cache budget of 10% of the prompt. But that number hides the part that matters. When the rules run for real, only one of them (SnapKV) still finds a hidden number in a long document; the other three get 0 out of 10.</strong></p>
+      <p><strong>Short answer: by the attention they keep, the best simple eviction rules get about 89–95% of what a perfect-hindsight oracle keeps, at a cache budget of 10% of the prompt. But that number hides the part that matters. When the rules run for real, only one of them (SnapKV) still finds a hidden number in a long document; the other three get 0 out of 10.</strong></p>
       <p>The question is how much a language model loses when it is forced to forget most of what it has read, and how close today's forgetting rules come to the best possible forgetting. We measured this on 30 long prompts (8,000 to 16,000 tokens each) across three kinds of task.</p>
       <p>Three results stand out. First, attention kept does not predict answers kept: rules that keep 84–88% of the oracle's attention fail retrieval completely, because what they drop is the 0.15% of the prompt that holds the answer. Second, the textbook "optimal" eviction rule from computer caching (Belady's) does <em>worse</em> than the best online rules, because its assumptions do not fit attention. Third, a simple greedy oracle turns out to be essentially exactly optimal, so the gaps below are real gaps, not artefacts of a weak yardstick.</p>
-      <p>Live results for question answering and the needle task are in. Live summarization is partly in and still running.</p>
+      <p>All 750 live generations are in (30 prompts × 4 budgets × 6 rules, plus 30 with the full cache). Of the three predictions made before any run, two were refuted and one holds only on the simulated measure.</p>
     </div>
     <dl class="figures">
       <div><dt>Prompts</dt><dd class="ss-px ss-px--s">30</dd></div>
@@ -239,7 +239,7 @@ page = f'''<title>KV Cache Oracle Gap</title>
   </figure>
 
   <header class="ss-chapter"><span class="ss-chapter__no">C</span><span class="ss-chapter__label">Live runs</span><h2>Does the model still answer?</h2></header>
-  <div class="ss-prose"><p>The numbers above are a simulation: replay a recording and count attention. Here each rule ran for real. The model read the prompt, the cache was cut to the budget, and the model wrote its answer while the rule evicted one token per new token. "Oracle, run live" replays the weighted oracle's evictions. Scores: needle is the share of the 10 prompts where the exact 7-digit number came back; question answering is token F1, the word overlap with the reference answer (0 to 1).</p></div>
+  <div class="ss-prose"><p>The numbers above are a simulation: replay a recording and count attention. Here each rule ran for real. The model read the prompt, the cache was cut to the budget, and the model wrote its answer while the rule evicted one token per new token. "Oracle, run live" replays the weighted oracle's evictions. Scores: needle is the share of the 10 prompts where the exact 7-digit number came back; question answering is token F1, the word overlap with the reference answer (0 to 1); summarization is ROUGE-L, the longest shared word sequence with a human-written summary (0 to 1).</p></div>
   <div class="ss-table-wrap">
     <table class="ss-table">
       <thead><tr><th>Needle in a haystack</th><th class="num">5%</th><th class="num">10%</th><th class="num">25%</th><th class="num">50%</th></tr></thead>
@@ -252,7 +252,7 @@ page = f'''<title>KV Cache Oracle Gap</title>
       <tbody>{livetable("mdqa")}</tbody>
     </table>
   </div>
-  {('<div class="ss-table-wrap"><table class="ss-table"><thead><tr><th>Summarization (ROUGE-L) · ' + f'{live_full("summ")[1]} of 10 prompts so far' + '</th><th class="num">5%</th><th class="num">10%</th><th class="num">25%</th><th class="num">50%</th></tr></thead><tbody>' + livetable("summ") + '</tbody></table></div>') if live_full("summ")[1] else '<div class="ss-prose"><p>Summarization (10 prompts × 24 runs of 255 tokens each) is still waiting its turn on the shared GPU.</p></div>'}
+  {('<div class="ss-table-wrap"><table class="ss-table"><thead><tr><th>Summarization (ROUGE-L)</th><th class="num">5%</th><th class="num">10%</th><th class="num">25%</th><th class="num">50%</th></tr></thead><tbody>' + livetable("summ") + '</tbody></table></div>') if live_full("summ")[1] else '<div class="ss-prose"><p>Summarization (10 prompts × 24 runs of 255 tokens each) is still waiting its turn on the shared GPU.</p></div>'}
 
   <div class="ss-note ss-note--rule"><span class="ss-note__tag">Main finding</span><div class="ss-note__body"><p><strong>Attention kept is not answers kept.</strong> At a 10% budget, LRU and H2O keep 0.88 and 0.84 of the oracle's attention on the needle task and find the number 0 times out of 10. SnapKV keeps 0.95 and finds it 10 out of 10, exactly like the oracle. A few points of attention mass separate total failure from perfect retrieval, because those few points sit on the answer.</p></div></div>
 
@@ -271,11 +271,11 @@ page = f'''<title>KV Cache Oracle Gap</title>
   <header class="ss-chapter"><span class="ss-chapter__no">D</span><span class="ss-chapter__label">Predictions</span><h2>What we expected and where it stands</h2></header>
   <div class="ss-table-wrap">
     <table class="ss-table">
-      <thead><tr><th>Prediction (written before any run)</th><th>Evidence so far, 10% budget</th><th>Status</th></tr></thead>
+      <thead><tr><th>Prediction (written before any run)</th><th>Evidence: best of StreamingLLM, H2O, SnapKV</th><th>Verdict</th></tr></thead>
       <tbody>
-        <tr><td>P1. Heuristics recover more than 90% of the oracle's mass on summarization.</td><td>Best is H2O at {agg("summ","0.1","h2o")[0]:.2f}; 0.90 at 5%, 0.94 at 50%. Right at the line.</td><td><span class="ss-pill ss-pill--mute">Unclear</span></td></tr>
-        <tr><td>P2. Heuristics recover less than 60% on needle retrieval.</td><td>On mass, wrong: SnapKV keeps {agg("needle","0.1","snapkv")[0]:.2f}. Live, three of the four real heuristics (LRU, StreamingLLM, H2O) score 0/10, while SnapKV matches the oracle at 10/10. The prediction was about the wrong thing: the gap is not spread across heuristics, it is all or nothing per heuristic.</td><td><span class="ss-pill ss-pill--mute">Refuted on mass, split live</span></td></tr>
-        <tr><td>P3. The gap widens as the budget shrinks.</td><td>On mass: yes for needle (0.98 → 0.94) and QA (0.98 → 0.91); flat for summarization. Live: yes for needle (most rules recover some prompts only at 25–50%) and for QA (StreamingLLM 0.43 → 0.29).</td><td><span class="ss-pill ss-pill--info">Partly supported</span></td></tr>
+        <tr><td>P1. Heuristics recover more than 90% of the oracle's mass on summarization.</td><td>At the pre-registered 10% budget, the best (H2O) keeps {agg("summ","0.1","h2o")[0]:.3f}, and 8 of 10 prompts fall below 0.90. It clears the line at 25% and 50%. Live, every rule writes summaries scoring within 0.03 of the full cache, but the score barely moves even for random eviction (see Surprises), so it does not help decide.</td><td><span class="ss-pill ss-pill--bad">Refuted, narrowly</span></td></tr>
+        <tr><td>P2. Heuristics recover less than 60% on needle retrieval.</td><td>The best (SnapKV) keeps {agg("needle","0.1","snapkv")[0]:.2f} of the mass and finds the number 10/10, as often as the oracle. The worry behind P2 was right for the others: StreamingLLM and H2O (and LRU) find it 0/10 at 5–10%. The gap is all or nothing per rule, not a shortfall in the best one.</td><td><span class="ss-pill ss-pill--bad">Refuted</span></td></tr>
+        <tr><td>P3. The gap widens as the budget shrinks.</td><td>On mass, yes: from 50% down to 5%, the gap grows from 0.02 to 0.06 on needle, 0.02 to 0.09 on QA, 0.06 to 0.10 on summarization. Live, the <em>best</em> rule stays level with the oracle at every budget; only the weaker rules fall away (QA, StreamingLLM 0.43 → 0.29).</td><td><span class="ss-pill ss-pill--info">Confirmed on mass only</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -293,24 +293,25 @@ page = f'''<title>KV Cache Oracle Gap</title>
   <div class="ss-note ss-note--trap"><span class="ss-note__tag">Trap</span><div class="ss-note__body"><p><strong>Half-precision attention breaks this model.</strong> Computing attention scores in 16-bit floats, as the standard "eager" mode does, overflowed: some key vectors reach values of about 172, and the model produced strings of "!!!". Scores are now computed in 32-bit, and outputs match the library's reference path. Attention recordings made the other way on Qwen2 models can be silently wrong.</p></div></div>
   <div class="ss-note ss-note--trap"><span class="ss-note__tag">Trap</span><div class="ss-note__body"><p><strong>Attention mass is not accuracy.</strong> Most mass goes to sinks and recent tokens (Plate 3), so mass scores look high for any rule that keeps those. Confirmed live: 0.84–0.88 of oracle mass, 0 of 10 needles found.</p></div></div>
   <div class="ss-prose"><p><strong>Early layers do not care which rule you use.</strong> In layers 1, 5 and 6 every non-random rule keeps 0.90–0.98 of the oracle's attention, within a few hundredths of each other, because attention there is almost all sinks and recent tokens. The rules only separate in layers 14–27, where the retrieval heads live (needle, layer 14: StreamingLLM 0.50, SnapKV 0.94). That suggests giving later layers a bigger share of the cache than early ones. Not tested yet.</p></div>
+  <div class="ss-prose"><p><strong>The summary score can't tell the rules apart.</strong> ROUGE-L, the standard word-overlap score against a human-written summary, lands between 0.15 and 0.20 for every rule at every budget, against 0.18 for the full cache. Random eviction at 50% scores 0.188, <em>higher</em> than no eviction, while its text agrees with the full-cache summary only 35% of the time. Any fluent summary of the same report reuses the same topical words. Judging summaries properly needs a faithfulness check against the source, which was not planned in advance and so was not swapped in after seeing results.</p></div>
   <div class="ss-prose">
     <p>Other caveats. Needle and QA answers are short (2–7 decode steps), so the oracle sees only a short future there. The first answer token always comes from the full-cache prefill pass, before any eviction, so on the needle task the first digit is free. SnapKV only compresses the prompt in its paper; to hold a fixed budget while writing we extended it to keep voting with the last 32 steps. No policy was tuned on these prompts; all settings are the papers' defaults.</p>
   </div>
 
-  <header class="ss-chapter"><span class="ss-chapter__no">→</span><span class="ss-chapter__label">Next</span><h2>What runs next</h2></header>
+  <header class="ss-chapter"><span class="ss-chapter__no">→</span><span class="ss-chapter__label">Next</span><h2>What to test next</h2></header>
   <div class="ss-table-wrap">
     <table class="ss-table">
-      <thead><tr><th>Step</th><th>What it answers</th><th>Status</th></tr></thead>
+      <thead><tr><th>Follow-up</th><th>What it would answer</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td>Simulations, all 30 prompts</td><td>Attention kept by every rule at every budget</td><td><span class="ss-pill ss-pill--info">Done</span></td></tr>
-        <tr><td>Exact-optimum check</td><td>Greedy oracle vs the true optimum</td><td><span class="ss-pill ss-pill--info">Done: within 0.07%</span></td></tr>
-        <tr><td>Live accuracy, needle and QA</td><td>Does the model still answer when each rule runs for real?</td><td><span class="ss-pill ss-pill--info">Done</span></td></tr>
-        <tr><td>Read failures</td><td>Which tokens the oracle kept that the rules dropped</td><td><span class="ss-pill ss-pill--info">Done (needle)</span></td></tr>
-        <tr><td>Live accuracy, summarization</td><td>Does a 255-token summary survive eviction?</td><td><span class="ss-pill ss-pill--mute">Waiting for GPU</span></td></tr>
+        <tr><td>Move the question</td><td>Put the question before the document (SnapKV should break) or repeat it before compressing (H2O and LRU should recover). Tests the "cold needle" explanation.</td><td><span class="ss-pill ss-pill--mute">Not started</span></td></tr>
+        <tr><td>Answer-token oracle</td><td>An oracle that protects attention on answer tokens in retrieval heads. Does that score predict live accuracy where total mass fails?</td><td><span class="ss-pill ss-pill--mute">Not started</span></td></tr>
+        <tr><td>Per-layer budgets</td><td>Small cache for early layers, large for 14–27, same total memory.</td><td><span class="ss-pill ss-pill--mute">Not started</span></td></tr>
+        <tr><td>Faithful summary metric</td><td>Replace ROUGE-L with a check against the source, chosen before rerunning.</td><td><span class="ss-pill ss-pill--mute">Not started</span></td></tr>
+        <tr><td>More prompts, second model</td><td>n = 10 per task is small; does the retrieval-head picture hold on another ungated model?</td><td><span class="ss-pill ss-pill--mute">Not started</span></td></tr>
       </tbody>
     </table>
   </div>
-  <div class="ss-note ss-note--verify"><span class="ss-note__tag">Open question</span><div class="ss-note__body">Answered for retrieval: total attention mass is the wrong yardstick. Open: should the oracle itself maximize attention on answer-bearing tokens in retrieval heads, and does any online rule do that without seeing the question first?</div></div>
+  <div class="ss-note ss-note--verify"><span class="ss-note__tag">Open question</span><div class="ss-note__body">Can any online rule find the answer before the question arrives? SnapKV only works because the question sits at the end of the prompt. With the question first, or in a chat where the next question is unknown, every rule tested here may fail.</div></div>
 
   <footer class="ss-foot">
     {base[base.index('<div class="ss-lockup">'): base.index('<span class="ss-label">Report')]}<span class="ss-label">kvoracle · 2026-11-06</span>
