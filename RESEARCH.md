@@ -92,6 +92,49 @@ Stored per prompt in `data/traces/<id>/` (on /mnt/work, not in git).
 - Traces are small enough (no "too large" surprise). Summarization dominates (96% of bytes) because T = 255.
 - Horizon caveat: needle and QA have 2–7 decode steps, so the oracle sees a very short future there.
 
+### Step 5 — reading the failures (needle, 2026-11-06)
+Script: `scripts/failures.py` (+ digit check). Choice of combination: on live accuracy LRU, StreamingLLM and
+H2O tie at 0/10 on needle at 5% and 10%. By the rule "lowest offline mass among the tied", the worst is
+**StreamingLLM on needle**; it is also the trivial case (it keeps no needle token by construction, needle mass
+kept 0.000). The informative failures are **H2O** (content-aware, still 0/10) and **LRU** (keeps 0.59 of the
+needle's mass, still 0/10), so all three are read.
+
+Where the answer lives:
+- The needle sentence is 18 tokens (7 of them digits), 0.15% of the prompt, yet it draws **10.1% of all
+  past-token attention** during the answer. 432 of 1,120 (prompt × KV head) caches pay > 5% of their attention
+  to it, i.e. ~43 of 112 KV heads per prompt.
+- Needle attention is concentrated in middle-to-late layers: layers 14 (13%), 22 (13%), 16 (10%), 19 (9%),
+  23 (7%). Top query heads by needle attention (mass of their top-32 on needle positions per step): L14.h0 0.99,
+  L15.h20 0.96, L22.h3 0.90, L22.h4 0.88, L11.h24 0.86, L14.h6 0.83, L17.h8 0.83. These match the
+  "retrieval head" pattern: a few heads that copy from the needle almost exclusively.
+
+What the oracle kept that the heuristics evicted (10% budget, share of the oracle-kept-but-evicted mass):
+
+| policy | needle-token mass kept (vs full cache) | needle heads with zero needle tokens kept | evicted mass by type: needle / haystack / template / sink / question | digits kept in needle heads | needle words kept |
+|---|---|---|---|---|---|
+| weighted oracle | 0.999 | — | — | — | — |
+| SnapKV | 0.976 | 0 / 432 | 0.04 / 0.96 / 0.00 / 0.00 / 0.00 | 0.97 | 1.00 |
+| LRU | 0.597 | 0 / 432 | 0.29 / 0.69 / 0.02 / 0.00 / 0.00 | **0.43** | 0.78 |
+| H2O | 0.170 | 57 / 432 | 0.46 / 0.51 / 0.03 / 0.00 / 0.00 | **0.01** | 0.25 |
+| StreamingLLM | 0.000 | 432 / 432 | 0.40 / 0.50 / 0.10 / 0.00 / 0.00 | 0.00 | 0.00 |
+
+(5% budget: same picture; SnapKV 0.960, LRU 0.587, H2O 0.128, StreamingLLM 0.000.)
+No heuristic loses sinks or the question: those are the easy 60% of mass (S3).
+
+**Mechanism hypothesis.** Retrieval is carried by a sparse set of mid-to-late-layer heads that, at answer
+time, put almost all their attention on the needle's ~18 tokens. During prefill, before the question arrives,
+those tokens are *cold*: nothing in the haystack has reason to attend to a random number, so
+(i) H2O's accumulated attention ranks them below early-position haystack tokens (cumulative scores have a
+positional bias: an early token is visible to more queries); (ii) LRU's last-use refreshes the sentence's word
+tokens (local, syntactic attention from neighbors) but not most digits, so it keeps a partial needle and the
+model copies the wrong digits (live outputs like 6085932 for 6088743, 578932 for 5728454); (iii) StreamingLLM
+is position-only. SnapKV succeeds because its observation window *is the question*: the last 32 prompt tokens
+already query for the number, so their votes point at exactly the tokens the retrieval heads will read.
+Prediction from the hypothesis: (a) moving the question to the start of the prompt (before the haystack) should
+break SnapKV too; (b) H2O/LRU should recover if the question is repeated before compression; (c) "attention
+mass on the answer tokens in retrieval heads" should predict live accuracy where total mass does not. None
+of these were tested yet.
+
 ## Surprises
 - **S1 (2026-11-06, before Step 1) fp16 eager attention breaks Qwen2.5-7B.** The first engine check with QKᵀ in
   fp16 (as HF eager does) produced garbage ("!!!" tokens, 0/40 agreement with stock SDPA generation). Layer-0
@@ -135,6 +178,6 @@ Stored per prompt in `data/traces/<id>/` (on /mnt/work, not in git).
 - [ ] Step 2 — build the oracle (Belady + weighted)
 - [ ] Step 3 — online baselines
 - [ ] Step 4 — measure (offline mass + live accuracy), judge P1–P3
-- [ ] Step 5 — read failures, mechanism hypothesis
+- [x] Step 5 — read failures, mechanism hypothesis (needle)
 
 ## Open questions
